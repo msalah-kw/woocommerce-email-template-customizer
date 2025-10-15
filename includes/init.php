@@ -416,7 +416,6 @@ class Init {
 		Compatible::init();
 		View_Product::init();
 		include_once VIWEC_SUPPORT . 'update.php';
-		include_once VIWEC_SUPPORT . 'check_update.php';
 		include_once VIWEC_INCLUDES . 'functions.php';
 		villtheme_include_folder( VIWEC_DIR . 'class' . DIRECTORY_SEPARATOR, 'just_require' );
 		villtheme_include_folder( VIWEC_DIR . 'plugins' . DIRECTORY_SEPARATOR, 'VIWEC_Plugins_' );
