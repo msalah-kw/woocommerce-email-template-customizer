@@ -416,7 +416,6 @@ class Init {
 		Compatible::init();
 		View_Product::init();
 		include_once VIWEC_SUPPORT . 'update.php';
-		include_once VIWEC_SUPPORT . 'check_update.php';
 		include_once VIWEC_INCLUDES . 'functions.php';
 		villtheme_include_folder( VIWEC_DIR . 'class' . DIRECTORY_SEPARATOR, 'just_require' );
 		villtheme_include_folder( VIWEC_DIR . 'plugins' . DIRECTORY_SEPARATOR, 'VIWEC_Plugins_' );
@@ -810,18 +809,16 @@ class Init {
 		do_action( 'villatheme_auto_update' );
 	}
 
-	public function check_update() {
-		$setting_url = admin_url( 'edit.php?post_type=viwec_template&page=viwec-auto-update' );
-		$key         = get_option( 'viwec_auto_update_key' );
-
-		new \VillaTheme_Plugin_Check_Update (
-			VIWEC_VER,                    // current version
-			'https://villatheme.com/wp-json/downloads/v3',  // update path
-			'woocommerce-email-template-customizer/woocommerce-email-template-customizer.php',                  // plugin file slug
-			'woocommerce-email-template-customizer', '52550', $key, $setting_url
-		);
-		new \VillaTheme_Plugin_Updater( 'woocommerce-email-template-customizer/woocommerce-email-template-customizer.php', 'woocommerce-email-template-customizer', $setting_url );
-	}
+        public function check_update() {
+                /*
+                 * Disable outbound requests to the VillaTheme update endpoint.
+                 * The original implementation instantiated VillaTheme_Plugin_Check_Update
+                 * and VillaTheme_Plugin_Updater, which triggered remote calls to check
+                 * for new versions. Leaving the method empty prevents those network
+                 * requests while keeping the action hook intact for backwards compatibility.
+                 */
+                return;
+        }
 
 }
 
