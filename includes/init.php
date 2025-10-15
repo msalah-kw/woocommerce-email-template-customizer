@@ -18,9 +18,14 @@ class Init {
 	public static $img_map;
 	protected $cache_products = [];
 	protected $cache_posts = [];
+	protected $remote_updates_enabled = false;
+	protected $did_disable_update_cleanup = false;
 
 	private function __construct() {
 //		$this->define_params();
+
+		$this->remote_updates_enabled = (bool) apply_filters( 'viwec_enable_remote_updates', false );
+
 		$this->class_init();
 
 		add_action( 'init', array( $this, 'plugin_textdomain' ) );
@@ -33,8 +38,13 @@ class Init {
 		//Premium
 		add_action( 'villatheme_auto_update', array( $this, 'plugin_update' ) );
 		add_action( 'admin_menu', [ $this, 'add_menu' ] );
-		add_action( 'admin_init', [ $this, 'check_update' ] );
-		add_action( 'admin_init', [ $this, 'save_update_key' ], 20 );
+
+		if ( $this->remote_updates_enabled ) {
+			add_action( 'admin_init', [ $this, 'check_update' ] );
+			add_action( 'admin_init', [ $this, 'save_update_key' ], 20 );
+		} else {
+			add_action( 'admin_init', [ $this, 'handle_remote_update_disabled' ], 5 );
+		}
 	}
 
 	public static function init() {
@@ -710,13 +720,17 @@ class Init {
 	}
 
 	public function save_update_key() {
+		if ( ! $this->remote_updates_enabled ) {
+			return;
+		}
+
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 		if ( ! isset( $_POST['_viwec_settings_nonce'] ) || ! wp_verify_nonce( wc_clean($_POST['_viwec_settings_nonce']), 'viwec_settings_action_nonce' ) ) {
 			return;
 		}
-//        $old_key = get_option('viwec_auto_update_key','');
+//		$old_key = get_option('viwec_auto_update_key','');
 		$key = isset( $_POST['viwec_auto_update_key'] ) ? sanitize_text_field( $_POST['viwec_auto_update_key'] ) : '';
 		update_option( 'viwec_auto_update_key', $key,'no' );
 		delete_site_transient( 'update_plugins' );
@@ -724,76 +738,100 @@ class Init {
 		delete_transient( 'villatheme_item_52550' );
 		delete_option( VIWEC_SLUG . '_messages' );
 		do_action( 'villatheme_save_and_check_key_'.VIWEC_SLUG, $key );
-        $viwec_settings = isset($_POST['viwec_settings'])? wc_clean($_POST['viwec_settings']):[];
+		$viwec_settings = isset($_POST['viwec_settings']) ? wc_clean($_POST['viwec_settings']) : [];
 		update_option( 'viwec_settings', $viwec_settings,'no' );
 	}
 	public function plugin_update() {
+		if ( ! $this->remote_updates_enabled ) {
+			?>
+		<div id="viwec-settings-page" class="wrap">
+			<h2><?php echo esc_html__( 'Settings', 'viwec-email-template-customizer' ); ?></h2>
+			<div class="notice notice-info">
+				<p><?php esc_html_e( 'Automatic update checks are disabled by the site administrator. No remote requests will be made for this plugin.', 'viwec-email-template-customizer' ); ?></p>
+			</div>
+			<p><?php esc_html_e( 'You can re-enable remote updates by hooking into the "viwec_enable_remote_updates" filter.', 'viwec-email-template-customizer' ); ?></p>
+		</div>
+		<?php
+			return;
+		}
+
 		$key = get_option( 'viwec_auto_update_key' );
-        $params = get_option('viwec_settings',['mail_log'=> 1]);
+		$params = get_option( 'viwec_settings', [ 'mail_log' => 1 ] );
 		?>
-        <div id="viwec-settings-page" class="wrap">
-        <h2><?php echo esc_html__( 'Settings', 'viwec-email-template-customizer' ) ?></h2>
-        <form method="post" class="vi-ui form small villatheme-support-auto-update-key">
-	        <?php
-	        wp_nonce_field( 'viwec_settings_action_nonce', '_viwec_settings_nonce' ,false);
-	        ?>
-            <div class="vi-ui segment">
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><?php esc_html_e( 'Auto update key', 'viwec-email-template-customizer' ) ?></th>
-                        <td>
-                            <div class="vi-ui action input fluid">
-                                <input type="text" name="viwec_auto_update_key"
-                                       id="auto-update-key"
-                                       class="villatheme-autoupdate-key-field"
-                                       value="<?php echo esc_attr( $key ) ?>">
+	<div id="viwec-settings-page" class="wrap">
+	<h2><?php echo esc_html__( 'Settings', 'viwec-email-template-customizer' ) ?></h2>
+	<form method="post" class="vi-ui form small villatheme-support-auto-update-key">
+		<?php
+		wp_nonce_field( 'viwec_settings_action_nonce', '_viwec_settings_nonce', false );
+		?>
+	    <div class="vi-ui segment">
+	        <table class="form-table">
+	            <tr>
+	                <th scope="row"><?php esc_html_e( 'Auto update key', 'viwec-email-template-customizer' ) ?></th>
+	                <td>
+	                    <div class="vi-ui action input fluid">
+	                        <input type="text" name="viwec_auto_update_key"
+	                               id="auto-update-key"
+	                               class="villatheme-autoupdate-key-field"
+	                               value="<?php echo esc_attr( $key ) ?>">
 
-                                <button type="button" class="vi-ui button green small villatheme-get-key-button"
-                                        data-href="https://api.envato.com/authorization?response_type=code&client_id=villatheme-download-keys-6wzzaeue&redirect_uri=https://villatheme.com/update-key"
-                                        data-id="28656007">
-			                        <?php echo esc_html__( 'Get Key', 'viwec-email-template-customizer' ) ?>
-                                </button>
-                            </div>
+	                        <button type="button" class="vi-ui button green small villatheme-get-key-button"
+	                                data-href="https://api.envato.com/authorization?response_type=code&client_id=villatheme-download-keys-6wzzaeue&redirect_uri=https://villatheme.com/update-key"
+	                                data-id="28656007">
+	                                    <?php echo esc_html__( 'Get Key', 'viwec-email-template-customizer' ) ?>
+	                        </button>
+	                    </div>
 
+	                    <?php
+	                    do_action( 'woocommerce-email-template-customizer_key' );
+	                    ?>
+	                    <p class="description">
+	                            <?php esc_html_e( 'Please fill your key what you get from', 'viwec-email-template-customizer' ); ?>
+	                    <a target="_blank" href="https://villatheme.com/my-download">https://villatheme.com/my-download</a>.
+	                            <?php esc_html_e( 'You can automatically update this plugin. See', 'viwec-email-template-customizer' ); ?>
+	                    <a target="_blank"
+	                       href="https://villatheme.com/knowledge-base/how-to-use-auto-update-feature/"><?php esc_html_e( 'guide', 'viwec-email-template-customizer' ); ?></a>
+	                    </p>
+	                </td>
+	            </tr>
+	            <tr>
+	                <th scope="row"><?php esc_html_e( 'Email log', 'viwec-email-template-customizer' ) ?></th>
+	                <td>
+	                    <div class="vi-ui toggle checkbox checked">
+	                        <input type="checkbox"
+	                               name="viwec_settings[mail_log]" <?php checked($params['mail_log']??'', 1 ); ?>
+	                               value="1">
+	                        <label></label>
+	                    </div>
+	                    <p class="description">
+	                        <?php esc_html_e('Log the basic info of the custom email into the WooCommerce log, with the entry name starting with \"viwec\"', 'viwec-email-template-customizer' ); ?>
+	                    </p>
+	                    <p class="description">
 	                        <?php
-	                        do_action( 'woocommerce-email-template-customizer_key' );
+	                        printf( esc_html__( 'Log files older than %s days will be automatically deleted by WooCommerce', 'viwec-email-template-customizer' ),wp_kses_post(apply_filters( 'woocommerce_logger_days_to_retain_logs', get_option('woocommerce_logs_retention_period_days', 30) )));
 	                        ?>
-                            <p class="description">
-		                        <?php esc_html_e( 'Please fill your key what you get from', 'viwec-email-template-customizer' ); ?>
-                                <a target="_blank" href="https://villatheme.com/my-download">https://villatheme.com/my-download</a>.
-		                        <?php esc_html_e( 'You can automatically update this plugin. See', 'viwec-email-template-customizer' ); ?>
-                                <a target="_blank"
-                                   href="https://villatheme.com/knowledge-base/how-to-use-auto-update-feature/"><?php esc_html_e( 'guide', 'viwec-email-template-customizer' ); ?></a>
-                            </p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e( 'Email log', 'viwec-email-template-customizer' ) ?></th>
-                        <td>
-                            <div class="vi-ui toggle checkbox checked">
-                                <input type="checkbox"
-                                       name="viwec_settings[mail_log]" <?php checked($params['mail_log']??'', 1 ); ?>
-                                       value="1">
-                                <label></label>
-                            </div>
-                            <p class="description">
-                                <?php esc_html_e('Log the basic info of the custom email into the WooCommerce log, with the entry name starting with "viwec"', 'viwec-email-template-customizer' ); ?>
-                            </p>
-                            <p class="description">
-                                <?php
-                                printf( esc_html__( 'Log files older than %s days will be automatically deleted by WooCommerce', 'viwec-email-template-customizer' ),wp_kses_post(apply_filters( 'woocommerce_logger_days_to_retain_logs', get_option('woocommerce_logs_retention_period_days', 30) )));
-                                ?>
-                            </p>
-                        </td>
-                    </tr>
-                </table>
-            </div>
+	                    </p>
+	                </td>
+	            </tr>
+	        </table>
+	    </div>
 
-            <button type="submit" class="vi-ui primary small button"><?php echo esc_html__( 'Save Key', 'viwec-email-template-customizer' ) ?></button>
+	    <button type="submit" class="vi-ui primary small button"><?php echo esc_html__( 'Save Key', 'viwec-email-template-customizer' ) ?></button>
 
-        </form>
-		<?php do_action( 'villatheme_support_' . VIWEC_SLUG ); ?>
-        </div><?php
+	</form>
+	        <?php do_action( 'villatheme_support_' . VIWEC_SLUG ); ?>
+	</div><?php
+	}
+
+	public function handle_remote_update_disabled() {
+		if ( $this->did_disable_update_cleanup ) {
+			return;
+		}
+
+		$this->did_disable_update_cleanup = true;
+
+		delete_transient( 'villatheme_item_52550' );
+		delete_option( VIWEC_SLUG . '_messages' );
 	}
 
 	public function add_menu() {
@@ -823,4 +861,3 @@ class Init {
 }
 
 Init::init();
-
